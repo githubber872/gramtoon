@@ -14,16 +14,22 @@ class PopularBooksScreen extends StatefulWidget {
 }
 
 class _PopularBooksScreenState extends State<PopularBooksScreen> {
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _openDetail(Book book) async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => BookDetailScreen(book: book)),
     );
-    // The favorite may have changed on the detail screen, so redraw.
     if (!mounted) return;
     setState(() {});
   }
 
+  // CREATE
   Future<void> _addBook() async {
     final newBook = await Navigator.push<Book>(
       context,
@@ -34,9 +40,53 @@ class _PopularBooksScreenState extends State<PopularBooksScreen> {
       setState(() {
         popularBooks.add(newBook);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${newBook.title}" was added')),
-      );
+      _showMessage('"${newBook.title}" was added');
+    }
+  }
+
+  // UPDATE
+  Future<void> _editBook(int index) async {
+    final updatedBook = await Navigator.push<Book>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddBookScreen(book: popularBooks[index]),
+      ),
+    );
+    if (!mounted) return;
+    if (updatedBook != null) {
+      setState(() {
+        popularBooks[index] = updatedBook;
+      });
+      _showMessage('"${updatedBook.title}" was updated');
+    }
+  }
+
+  // DELETE
+  Future<void> _deleteBook(int index) async {
+    final book = popularBooks[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete book'),
+        content: Text('Delete "${book.title}" from the list?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed == true) {
+      setState(() {
+        popularBooks.removeAt(index);
+      });
+      _showMessage('"${book.title}" was deleted');
     }
   }
 
@@ -53,8 +103,30 @@ class _PopularBooksScreenState extends State<PopularBooksScreen> {
     );
   }
 
-  /// Rank #1 gets a big card, like in the design.
-  Widget _buildFeatured(Book book) {
+  Widget _actionButtons(int index) {
+    final compact = TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      visualDensity: VisualDensity.compact,
+    );
+    return Wrap(
+      children: [
+        TextButton.icon(
+          style: compact,
+          onPressed: () => _editBook(index),
+          icon: const Icon(Icons.edit, size: 18),
+          label: const Text('Edit'),
+        ),
+        TextButton.icon(
+          style: compact,
+          onPressed: () => _deleteBook(index),
+          icon: const Icon(Icons.delete, size: 18),
+          label: const Text('Delete'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatured(Book book, int index) {
     return Card(
       margin: const EdgeInsets.all(12),
       child: InkWell(
@@ -85,14 +157,11 @@ class _PopularBooksScreenState extends State<PopularBooksScreen> {
                     const SizedBox(height: 8),
                     Text(
                       book.description,
-                      maxLines: 4,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Read more...',
-                      style: TextStyle(decoration: TextDecoration.underline),
-                    ),
+                    _actionButtons(index),
                   ],
                 ),
               ),
@@ -105,25 +174,48 @@ class _PopularBooksScreenState extends State<PopularBooksScreen> {
   }
 
   Widget _buildRow(Book book, int index) {
-    return ListTile(
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 28,
-            child: Text(
-              '${index + 1}',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: InkWell(
+        onTap: () => _openDetail(book),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 28,
+                child: Text(
+                  '${index + 1}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              BookCover(book: book, width: 56, height: 80),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      book.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      book.category,
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                    Text(formatRupiah(book.finalPrice)),
+                    _actionButtons(index),
+                  ],
+                ),
+              ),
+              _favoriteButton(book),
+            ],
           ),
-          BookCover(book: book, width: 40, height: 56),
-        ],
+        ),
       ),
-      title: Text(book.title),
-      subtitle: Text('${book.category}\n${formatRupiah(book.finalPrice)}'),
-      isThreeLine: true,
-      trailing: _favoriteButton(book),
-      onTap: () => _openDetail(book),
     );
   }
 
@@ -131,17 +223,19 @@ class _PopularBooksScreenState extends State<PopularBooksScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Popular books')),
-      body: ListView.builder(
-        itemCount: popularBooks.length,
-        itemBuilder: (context, index) {
-          final book = popularBooks[index];
-          if (index == 0) {
-            return _buildFeatured(book);
-          } else {
-            return _buildRow(book, index);
-          }
-        },
-      ),
+      body: popularBooks.isEmpty
+          ? const Center(child: Text('No books yet. Tap "Add book" to start.'))
+          : ListView.builder(
+              itemCount: popularBooks.length,
+              itemBuilder: (context, index) {
+                final book = popularBooks[index];
+                if (index == 0) {
+                  return _buildFeatured(book, index);
+                } else {
+                  return _buildRow(book, index);
+                }
+              },
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addBook,
         icon: const Icon(Icons.add),
